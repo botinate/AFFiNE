@@ -10,5 +10,6 @@ export * from './error';
 export * from './exa-crawl';
 export * from './exa-search';
 export * from './frontend-read';
+export * from './organize';
 export * from './section-edit';
 export * from './tool';

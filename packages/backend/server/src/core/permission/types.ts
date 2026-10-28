@@ -14,6 +14,9 @@ export const Actions = {
     TransferOwner: '',
     Organize: {
       Read: '',
+      Create: '',
+      Update: '',
+      Delete: '',
     },
     Users: {
       Read: '',
