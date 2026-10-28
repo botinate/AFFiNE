@@ -13,7 +13,8 @@
 #
 # Target arch is parameterised because this is deployed to Apple Silicon hosts
 # running a linux/arm64 image. Override for amd64:
-#   --build-arg RUST_TARGET=x86_64-unknown-linux-gnu --build-arg YARN_CPU=x64
+#   --build-arg RUST_TARGET=x86_64-unknown-linux-gnu
+#   and change the two supportedArchitectures lines in the base stage.
 
 ARG RUST_TARGET=aarch64-unknown-linux-gnu
 ARG YARN_CPU=arm64
@@ -29,9 +30,11 @@ RUN corepack enable && corepack prepare yarn@4.18.0 --activate
 WORKDIR /src
 COPY . .
 # Same arch narrowing upstream does before installing, so the lockfile
-# resolves for the image and not for the build host. Set as one object —
-# yarn 4 rejects the dotted `supportedArchitectures.cpu` form.
-RUN yarn config set --json supportedArchitectures "{\"cpu\":[\"${YARN_CPU}\"],\"libc\":[\"glibc\"]}" \
+# resolves for the image and not for the build host. Dotted form + single
+# quotes, exactly as build-images.yml does it — yarn 4 rejects setting the
+# whole `supportedArchitectures` object in one call.
+RUN yarn config set --json supportedArchitectures.cpu '["arm64"]' \
+ && yarn config set --json supportedArchitectures.libc '["glibc"]' \
  && yarn install --immutable
 
 # ── server-native.node (Rust napi addon) ──────────────────────────────────
