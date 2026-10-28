@@ -737,6 +737,9 @@
         "docCreate",
         "docUpdate",
         "docUpdateMeta",
+        "folderCreate",
+        "folderList",
+        "docToFolder",
         "webSearch",
         "docCompose",
         "codeArtifact"

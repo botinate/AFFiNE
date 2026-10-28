@@ -59,7 +59,7 @@ export const buildFolderCreateHandler = (
     await ac
       .user(options.user)
       .workspace(options.workspace)
-      .assert('Workspace.Organize.Create');
+      .assert('Workspace.CreateDoc');
 
     const { folderId } = await folders.createFolder(
       options.workspace,
@@ -87,7 +87,7 @@ export const buildFolderListHandler = (
     await ac
       .user(options.user)
       .workspace(options.workspace)
-      .assert('Workspace.Organize.Read');
+      .assert('Workspace.Read');
 
     const items = await folders.listFolders(options.workspace);
     return {
@@ -118,7 +118,7 @@ export const buildDocToFolderHandler = (
     await ac
       .user(options.user)
       .workspace(options.workspace)
-      .assert('Workspace.Organize.Update');
+      .assert('Workspace.CreateDoc');
 
     if (remove) {
       await folders.removeDocFromFolder(options.workspace, folderId, docId);
