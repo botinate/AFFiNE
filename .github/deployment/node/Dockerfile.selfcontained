@@ -29,13 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN corepack enable && corepack prepare yarn@4.18.0 --activate
 WORKDIR /src
 COPY . .
-# Same arch narrowing upstream does before installing, so the lockfile
-# resolves for the image and not for the build host. Dotted form + single
-# quotes, exactly as build-images.yml does it — yarn 4 rejects setting the
-# whole `supportedArchitectures` object in one call.
-RUN yarn config set --json supportedArchitectures.cpu '["arm64"]' \
- && yarn config set --json supportedArchitectures.libc '["glibc"]' \
- && yarn install --immutable
+# Single-arch build: yarn's default architecture resolution is the build
+# host, which is the image's arch here. Upstream sets
+# supportedArchitectures.cpu/.libc because its CI builds all three arches at
+# once; yarn 4.18's `config set` rejects that dotted key outright, and it is
+# unnecessary when the target is one arch.
+RUN yarn install --immutable
 
 # ── server-native.node (Rust napi addon) ──────────────────────────────────
 # built-in.json is include_str!-embedded here
