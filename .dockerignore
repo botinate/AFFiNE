@@ -1,4 +1,5 @@
-.git
+# .git is NOT ignored: `yarn affine` reads it for version metadata and
+# fails with 'Failed to open git repo' when it is absent.
 .github/**/*.md
 .gitignore
 
