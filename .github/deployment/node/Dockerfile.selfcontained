@@ -4,15 +4,23 @@
 # be deployed without reproducing upstream's CI (which builds web, admin,
 # mobile, the Rust napi addon and the server in five separate jobs).
 #
-# Everything runs on linux/amd64 inside this file, which matters: the napi
-# addon must be compiled for the image's OS/arch, and `engines` pins Node to
-# >=22.12 <23 with `engine-strict=true`, so it cannot be built on a host
-# running Node 26.
-#
 # Mirrors .github/workflows/build-images.yml step for step.
+#
+# Must build in Linux containers regardless of host:
+#   - the napi addon is OS/arch specific
+#   - `engines` pins Node >=22.12 <23 with `engine-strict=true`, so a Node 26
+#     host cannot even install the tree
+#
+# Target arch is parameterised because this is deployed to Apple Silicon hosts
+# running a linux/arm64 image. Override for amd64:
+#   --build-arg RUST_TARGET=x86_64-unknown-linux-gnu --build-arg YARN_CPU=x64
+
+ARG RUST_TARGET=aarch64-unknown-linux-gnu
+ARG YARN_CPU=arm64
 
 # ── shared base: node 22 + build toolchain + yarn 4 ───────────────────────
 FROM node:22-bookworm-slim AS base
+ARG YARN_CPU
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates build-essential clang cmake python3 \
       pkg-config libssl-dev \
@@ -21,29 +29,25 @@ RUN corepack enable && corepack prepare yarn@4.18.0 --activate
 WORKDIR /src
 COPY . .
 # Same arch narrowing upstream does before installing, so the lockfile
-# resolves for the image and not for the host.
-ARG YARN_CPU
+# resolves for the image and not for the build host.
 RUN yarn config set --json supportedArchitectures.cpu "[\"${YARN_CPU}\"]" \
  && yarn config set --json supportedArchitectures.libc '["glibc"]' \
  && yarn install --immutable
 
 # ── server-native.node (Rust napi addon) ──────────────────────────────────
-# built-in.json is include_str!-embedded here (native/src/llm/prompt_catalog.rs),
-# so any prompt/tool change requires this stage to re-run.
-ARG RUST_TARGET=aarch64-unknown-linux-gnu
-ARG YARN_CPU=arm64
-
+# built-in.json is include_str!-embedded here
+# (native/src/llm/prompt_catalog.rs), so any prompt/tool change re-runs this.
 FROM base AS native
+ARG RUST_TARGET
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain 1.97.1 --profile minimal \
         --target ${RUST_TARGET} --no-modify-path
-# tree-sitter needs _BSD_SOURCE and AT_HWCAP2 on this target
+# tree-sitter needs _BSD_SOURCE and AT_HWCAP2 on aarch64-linux
 # (see .github/actions/build-rust/action.yml)
 ENV CC="clang -D_BSD_SOURCE -DAT_HWCAP2=26" \
     TARGET_CC="clang -D_BSD_SOURCE -DAT_HWCAP2=26"
-ARG RUST_TARGET
 RUN yarn workspace @affine/server-native build --target ${RUST_TARGET}
 
 # ── frontends ─────────────────────────────────────────────────────────────
