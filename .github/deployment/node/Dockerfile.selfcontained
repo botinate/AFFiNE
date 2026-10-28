@@ -1,0 +1,89 @@
+# syntax=docker/dockerfile:1.7
+#
+# Self-contained build of the AFFiNE server image, so a patch to server code can
+# be deployed without reproducing upstream's CI (which builds web, admin,
+# mobile, the Rust napi addon and the server in five separate jobs).
+#
+# Everything runs on linux/amd64 inside this file, which matters: the napi
+# addon must be compiled for the image's OS/arch, and `engines` pins Node to
+# >=22.12 <23 with `engine-strict=true`, so it cannot be built on a host
+# running Node 26.
+#
+# Mirrors .github/workflows/build-images.yml step for step.
+
+# ── shared base: node 22 + build toolchain + yarn 4 ───────────────────────
+FROM node:22-bookworm-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates build-essential clang cmake python3 \
+      pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare yarn@4.18.0 --activate
+WORKDIR /src
+COPY . .
+# Same arch narrowing upstream does before installing, so the lockfile
+# resolves for the image and not for the host.
+RUN yarn config set --json supportedArchitectures.cpu '["x64"]' \
+ && yarn config set --json supportedArchitectures.libc '["glibc"]' \
+ && yarn install --immutable
+
+# ── server-native.node (Rust napi addon) ──────────────────────────────────
+# built-in.json is include_str!-embedded here (native/src/llm/prompt_catalog.rs),
+# so any prompt/tool change requires this stage to re-run.
+FROM base AS native
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain 1.97.1 --profile minimal \
+        --target x86_64-unknown-linux-gnu --no-modify-path
+# tree-sitter needs _BSD_SOURCE and AT_HWCAP2 on this target
+# (see .github/actions/build-rust/action.yml)
+ENV CC="clang -D_BSD_SOURCE -DAT_HWCAP2=26" \
+    TARGET_CC="clang -D_BSD_SOURCE -DAT_HWCAP2=26"
+RUN yarn workspace @affine/server-native build --target x86_64-unknown-linux-gnu
+
+# ── frontends ─────────────────────────────────────────────────────────────
+FROM base AS frontend
+RUN yarn affine @affine/web build \
+ && yarn affine @affine/admin build \
+ && yarn affine @affine/mobile build
+
+# ── server bundle ─────────────────────────────────────────────────────────
+FROM base AS server
+COPY --from=native /src/packages/backend/native/server-native.node \
+                   ./packages/backend/native/server-native.node
+RUN yarn workspace @affine/server build
+
+# ── production node_modules + prisma ──────────────────────────────────────
+FROM base AS release-deps
+COPY --from=server /src/packages/backend/server/dist ./packages/backend/server/dist
+COPY --from=frontend /src/packages/frontend/apps/web/dist ./packages/frontend/apps/web/dist
+COPY --from=frontend /src/packages/frontend/admin/dist ./packages/frontend/admin/dist
+COPY --from=frontend /src/packages/frontend/apps/mobile/dist ./packages/frontend/apps/mobile/dist
+RUN yarn workspaces focus @affine/server --production \
+ && yarn workspace @affine/server prisma generate \
+ && mv ./node_modules ./packages/backend/server
+
+# ── final image (same shape as .github/deployment/node/Dockerfile) ────────
+FROM node:22-bookworm-slim AS assets
+WORKDIR /app
+COPY --from=release-deps /src/packages/backend/server /app
+COPY --from=release-deps /src/packages/frontend/apps/web/dist /app/static
+COPY --from=release-deps /src/packages/frontend/admin/dist /app/static/admin
+COPY --from=release-deps /src/packages/frontend/apps/mobile/dist /app/static/mobile
+
+ARG TARGETARCH
+ARG TARGETVARIANT
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN AFFINE_DOCKER_CLEAN=1 TARGETARCH="${TARGETARCH}" TARGETVARIANT="${TARGETVARIANT}" \
+    node ./scripts/docker-clean.mjs
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+COPY --from=assets /app /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      openssl libjemalloc2 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV LD_PRELOAD=libjemalloc.so.2
+EXPOSE 3010
+CMD ["sh", "-c", "node ./scripts/upgrade-config.js && exec node ./dist/main.js"]
