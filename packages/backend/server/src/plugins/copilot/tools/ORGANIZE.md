@@ -28,42 +28,45 @@ Everything here compiles and is unit-shaped like its neighbours
 `create*Tool(handler)` wraps it in `defineTool`, failures return `toolError(...)`
 so the turn recovers instead of aborting.
 
-## The one remaining step: bind `FolderPort`
+## `FolderPort` is bound (option 1)
 
-`FolderPort` is left as an explicit 4-method seam because **the backend has no
-folder service to bind to**. Verified against this tree:
+Implemented in `packages/backend/server/src/core/organize/workspace-folder-port.ts`
+as `WorkspaceFolderPort`, writing straight into the `folders` table's CRDT doc.
 
-- `grep -rn folder packages/backend/server/src/` → nothing but this PR
-- `Workspace.Organize` is referenced nowhere except `permission/types.ts`
-- Folders are a **client-side typed CRDT table**:
-  `packages/frontend/core/src/modules/organize/stores/folder.ts` writes
-  `dbService.db.folders.create({ parentId, type, data, index })`
-- `DocWriter` (`core/doc/writer.ts`) only does `createDoc` / `updateDoc` /
-  `updateDocMeta` — it targets document markdown, not the `db$folders` schema
-  in `packages/frontend/core/src/modules/db/schema/schema.ts`
+It reproduces `@toeverything/infra`'s `YjsTableAdapter` encoding rather than
+depending on it (the backend does not depend on `@toeverything/infra`):
 
-So binding `FolderPort` is one of two things, and it is a design decision more
-than a patch:
+    Doc
+      RowKey(string): YMap({ FieldA: primitive, ... })
 
-1. **Backend mutate of `db$folders`.** The write path exists —
-   `DocWriter.updateDoc` ends in
-   `storage.pushDocUpdates(workspaceId, docId, [delta], editorId)` on
-   `PgWorkspaceDocStorageAdapter`. What's missing is a server-side encoder for
-   the `modules/db` row format so a folder row can be expressed as that delta.
-   Porting that codec is the bulk of the work.
+Each ORM table is its own YDoc whose guid is the table name, so the `folders`
+table lives in workspace doc **`db$folders`**. A row is a YMap named by its
+`id`, fields are plain primitives — which is why the frontend's
+`dbService.db.folders.create({...})` and this writer agree without sharing
+code.
 
-2. **Delegated write to a live client.** `DelegatedEditorService` already drives
-   the focused editor, but its tools are read-only
-   (`frontend_get_editor_state`, `frontend_read_selection`,
-   `frontend_read_nodes`, `frontend_snapshot_document`). Extending it with a
-   write verb would let the server ask the open client to call
-   `organizeService.folderTree…createFolder(...)`. Smaller, but requires an
-   attached client and fails headlessly.
+Row shape is `modules/db/schema/schema.ts`'s:
 
-(1) is the more useful end state; (2) is the smaller diff. I did not pick
-silently — that choice belongs to whoever owns `modules/db`.
+    folders: { id, parentId?, data, type, index }
 
-## Integration once `FolderPort` binds
+`type` is `'folder'` (data = display name) or `'doc' | 'tag' | 'collection'`
+(data = the linked node id). Placing a doc in a folder is creating a
+`type: 'doc'` row with `parentId` = the folder — the same as
+`FolderStore.createLink` client-side.
+
+Writes go through `PgWorkspaceDocStorageAdapter.pushDocUpdates`, pushing only
+the delta (`encodeStateAsUpdate(after, encodeStateVector(before))`), exactly
+like `DocWriter.updateDoc` does for markdown. Row ids are UUID-derived; ordering
+uses `generateFractionalIndexingKeyBetween`, copied from
+`packages/common/infra/src/utils/fractional-indexing.ts` and backed by the
+`fractional-indexing` dep added to `packages/backend/server/package.json`, so
+keys stay byte-compatible with the frontend's sort order.
+
+`OrganizeModule` (`core/organize/index.ts`) provides it and is added to
+`COPILOT_SHARED_IMPORTS`, so `ToolRuntime` injects `WorkspaceFolderPort`
+alongside `DocWriter`.
+
+## Registration
 
 In `plugins/copilot/runtime/tool-runtime.ts`, alongside the `docCreate` case:
 

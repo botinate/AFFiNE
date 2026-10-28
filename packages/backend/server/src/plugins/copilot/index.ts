@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common';
 
 import { ServerConfigModule } from '../../core';
 import { DocStorageModule } from '../../core/doc';
+import { OrganizeModule } from '../../core/organize';
 import { EntitlementModule } from '../../core/entitlement';
 import { FeatureModule } from '../../core/features';
 import { PermissionModule } from '../../core/permission';
@@ -27,6 +28,7 @@ import {
 
 const COPILOT_SHARED_IMPORTS = [
   DocStorageModule,
+  OrganizeModule,
   EntitlementModule,
   FeatureModule,
   QuotaModule,

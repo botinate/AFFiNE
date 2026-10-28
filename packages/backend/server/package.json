@@ -80,6 +80,7 @@
     "exa-js": "^2.4.0",
     "express": "^5.0.1",
     "fast-xml-parser": "^5.8.0",
+    "fractional-indexing": "^3.2.0",
     "get-stream": "^9.0.1",
     "google-auth-library": "^10.2.0",
     "graphql": "^16.13.2",

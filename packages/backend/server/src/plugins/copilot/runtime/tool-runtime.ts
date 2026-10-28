@@ -3,6 +3,7 @@ import { forwardRef, Inject, Injectable } from '@nestjs/common';
 
 import { Config } from '../../../base';
 import { DocReader, DocWriter } from '../../../core/doc';
+import { WorkspaceFolderPort } from '../../../core/organize';
 import { PermissionAccess } from '../../../core/permission';
 import { Models } from '../../../models';
 import { DelegatedEditorService } from '../delegated/service';
@@ -19,6 +20,9 @@ import {
   buildDocumentSearch,
   buildDocUpdateHandler,
   buildDocUpdateMetaHandler,
+  buildFolderCreateHandler,
+  buildFolderListHandler,
+  buildDocToFolderHandler,
   type CopilotTool,
   type CopilotToolSet,
   createArtifactReadTool,
@@ -32,8 +36,11 @@ import {
   createDocSearchTool,
   createDocUpdateMetaTool,
   createDocUpdateTool,
+  createDocToFolderTool,
   createExaCrawlTool,
   createExaSearchTool,
+  createFolderCreateTool,
+  createFolderListTool,
   createFrontendEditorStateTool,
   createFrontendNodesTool,
   createFrontendSelectionTool,
@@ -59,7 +66,8 @@ export class ToolRuntime {
     private readonly promptRuntime: Pick<PromptRuntime, 'runText'>,
     private readonly retrieval: DocumentRetrievalService,
     private readonly artifactRetrieval: ArtifactRetrievalService,
-    private readonly delegated: DelegatedEditorService
+    private readonly delegated: DelegatedEditorService,
+    private readonly folders: WorkspaceFolderPort
   ) {}
 
   async getTools(
@@ -232,6 +240,27 @@ export class ToolRuntime {
         }
         case 'sectionEdit': {
           tools.section_edit = createSectionEditTool(runPromptText);
+          break;
+        }
+        case 'folderCreate': {
+          const createFolder = buildFolderCreateHandler(this.folders, this.ac);
+          tools.folder_create = createFolderCreateTool(
+            createFolder.bind(null, options)
+          );
+          break;
+        }
+        case 'folderList': {
+          const listFolders = buildFolderListHandler(this.folders, this.ac);
+          tools.folder_list = createFolderListTool(
+            listFolders.bind(null, options)
+          );
+          break;
+        }
+        case 'docToFolder': {
+          const placeDoc = buildDocToFolderHandler(this.folders, this.ac);
+          tools.doc_to_folder = createDocToFolderTool(
+            placeDoc.bind(null, options)
+          );
           break;
         }
       }
