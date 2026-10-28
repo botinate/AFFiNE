@@ -29,9 +29,9 @@ RUN corepack enable && corepack prepare yarn@4.18.0 --activate
 WORKDIR /src
 COPY . .
 # Same arch narrowing upstream does before installing, so the lockfile
-# resolves for the image and not for the build host.
-RUN yarn config set --json supportedArchitectures.cpu "[\"${YARN_CPU}\"]" \
- && yarn config set --json supportedArchitectures.libc '["glibc"]' \
+# resolves for the image and not for the build host. Set as one object —
+# yarn 4 rejects the dotted `supportedArchitectures.cpu` form.
+RUN yarn config set --json supportedArchitectures "{\"cpu\":[\"${YARN_CPU}\"],\"libc\":[\"glibc\"]}" \
  && yarn install --immutable
 
 # ── server-native.node (Rust napi addon) ──────────────────────────────────
