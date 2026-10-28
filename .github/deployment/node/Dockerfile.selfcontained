@@ -14,14 +14,12 @@
 # Target arch is parameterised because this is deployed to Apple Silicon hosts
 # running a linux/arm64 image. Override for amd64:
 #   --build-arg RUST_TARGET=x86_64-unknown-linux-gnu
-#   and change the two supportedArchitectures lines in the base stage.
+#   (also drop the YARN_* ARG trap noted in the base stage)
 
 ARG RUST_TARGET=aarch64-unknown-linux-gnu
-ARG YARN_CPU=arm64
 
 # ── shared base: node 22 + build toolchain + yarn 4 ───────────────────────
 FROM node:22-bookworm-slim AS base
-ARG YARN_CPU
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates build-essential clang cmake python3 \
       pkg-config libssl-dev \
@@ -29,15 +27,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN corepack enable
 WORKDIR /src
 COPY . .
-# Single-arch build: yarn's default architecture resolution is the build
-# host, which is the image's arch here. Upstream sets
-# supportedArchitectures.cpu/.libc because its CI builds all three arches at
-# once; unnecessary when the target is one arch.
+# NB: no ARG named YARN_* — Docker promotes ARGs to env vars for RUN steps and
+# yarn reads YARN_<name> as a config setting, so `ARG YARN_CPU` makes yarn
+# reject an unknown setting called `cpu`. That cost a few build cycles to find.
 #
-# Invoke the repo's pinned yarn directly rather than going through corepack's
-# shim — `corepack prepare --activate` produced a yarn that rejected
-# config keys the same binary accepts when corepack merely enables it.
-RUN node .yarn/releases/yarn-4.18.0.cjs install --immutable
+# Single-arch build: yarn's default architecture resolution is the build host,
+# which is the target arch here.
+RUN yarn install --immutable
 
 # ── server-native.node (Rust napi addon) ──────────────────────────────────
 # built-in.json is include_str!-embedded here
