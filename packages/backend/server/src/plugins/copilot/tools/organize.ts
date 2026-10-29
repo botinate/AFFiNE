@@ -23,9 +23,13 @@ const sanitizeName = (name: string) => name.replace(/[\r\n]+/g, ' ').trim();
  * the model can recover rather than the turn aborting.
  */
 export interface FolderPort {
+  // `actorId` is the calling user's id: every write is attributed to them and
+  // the permission layer rejects a synthetic actor with
+  // domain_permission_denied.
   createFolder(
     workspaceId: string,
-    name: string
+    name: string,
+    actorId: string
   ): Promise<{ folderId: string }>;
   listFolders(workspaceId: string): Promise<
     { folderId: string; name: string; docIds: string[] }[]
@@ -33,12 +37,14 @@ export interface FolderPort {
   addDocToFolder(
     workspaceId: string,
     folderId: string,
-    docId: string
+    docId: string,
+    actorId: string
   ): Promise<void>;
   removeDocFromFolder(
     workspaceId: string,
     folderId: string,
-    docId: string
+    docId: string,
+    actorId: string
   ): Promise<void>;
 }
 
@@ -63,7 +69,8 @@ export const buildFolderCreateHandler = (
 
     const { folderId } = await folders.createFolder(
       options.workspace,
-      sanitized
+      sanitized,
+      options.user
     );
     logger.log(`folder created: ${folderId} (${sanitized})`);
 
@@ -121,9 +128,19 @@ export const buildDocToFolderHandler = (
       .assert('Workspace.CreateDoc');
 
     if (remove) {
-      await folders.removeDocFromFolder(options.workspace, folderId, docId);
+      await folders.removeDocFromFolder(
+        options.workspace,
+        folderId,
+        docId,
+        options.user
+      );
     } else {
-      await folders.addDocToFolder(options.workspace, folderId, docId);
+      await folders.addDocToFolder(
+        options.workspace,
+        folderId,
+        docId,
+        options.user
+      );
     }
 
     return {

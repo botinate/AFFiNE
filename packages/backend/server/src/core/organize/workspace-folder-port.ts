@@ -43,9 +43,9 @@ export class WorkspaceFolderPort implements FolderPort {
 
   constructor(private readonly storage: WorkspaceDocStorage) {}
 
-  async createFolder(workspaceId: string, name: string) {
+  async createFolder(workspaceId: string, name: string, actorId: string) {
     const folderId = newId();
-    await this.upsertRow(workspaceId, {
+    await this.upsertRow(workspaceId, actorId, {
       id: folderId,
       parentId: null,
       data: name,
@@ -69,7 +69,12 @@ export class WorkspaceFolderPort implements FolderPort {
       }));
   }
 
-  async addDocToFolder(workspaceId: string, folderId: string, docId: string) {
+  async addDocToFolder(
+    workspaceId: string,
+    folderId: string,
+    docId: string,
+    actorId: string
+  ) {
     const rows = await this.readRows(workspaceId);
     const folder = rows.find(r => r.id === folderId && r.type === 'folder');
     if (!folder) {
@@ -82,6 +87,7 @@ export class WorkspaceFolderPort implements FolderPort {
     const existing = rows.find(r => r.type === 'doc' && r.data === docId);
     await this.upsertRow(
       workspaceId,
+      actorId,
       existing
         ? { ...existing, parentId: folderId, index }
         : { id: newId(), parentId: folderId, data: docId, type: 'doc', index }
@@ -91,7 +97,8 @@ export class WorkspaceFolderPort implements FolderPort {
   async removeDocFromFolder(
     workspaceId: string,
     folderId: string,
-    docId: string
+    docId: string,
+    actorId: string
   ) {
     const rows = await this.readRows(workspaceId);
     const link = rows.find(
@@ -100,7 +107,7 @@ export class WorkspaceFolderPort implements FolderPort {
     if (!link) {
       throw new Error(`Doc ${docId} is not in folder ${folderId}`);
     }
-    await this.deleteRow(workspaceId, link.id);
+    await this.deleteRow(workspaceId, actorId, link.id);
   }
 
   // ── CRDT plumbing ───────────────────────────────────────────────────────
@@ -130,7 +137,11 @@ export class WorkspaceFolderPort implements FolderPort {
    * Merge one row into `db$folders` and push only the delta, the same shape
    * `DocWriter.updateDoc` uses for markdown documents.
    */
-  private async upsertRow(workspaceId: string, row: FolderRow) {
+  private async upsertRow(
+    workspaceId: string,
+    actorId: string,
+    row: FolderRow
+  ) {
     const { before, after } = await this.copyDoc(workspaceId);
 
     const record = after.getMap(row.id) as YMap<unknown>;
@@ -142,15 +153,19 @@ export class WorkspaceFolderPort implements FolderPort {
       record.set('index', row.index);
     }, ORIGIN);
 
-    await this.push(workspaceId, before, after);
+    await this.push(workspaceId, actorId, before, after);
   }
 
-  private async deleteRow(workspaceId: string, rowId: string) {
+  private async deleteRow(
+    workspaceId: string,
+    actorId: string,
+    rowId: string
+  ) {
     const { before, after } = await this.copyDoc(workspaceId);
     after.transact(() => {
       after.share.delete(rowId);
     }, ORIGIN);
-    await this.push(workspaceId, before, after);
+    await this.push(workspaceId, actorId, before, after);
   }
 
   private async copyDoc(workspaceId: string) {
@@ -166,9 +181,20 @@ export class WorkspaceFolderPort implements FolderPort {
     return { before, after };
   }
 
-  private async push(workspaceId: string, before: Doc, after: Doc) {
+  /**
+   * `actorId` must be the real calling user — `PgWorkspaceDocStorageAdapter`
+   * attributes the write to it and rejects a synthetic one with
+   * `domain_permission_denied` (which surfaced as "Failed to store doc
+   * updates" in the tool response).
+   */
+  private async push(
+    workspaceId: string,
+    actorId: string,
+    before: Doc,
+    after: Doc
+  ) {
     const delta = encodeStateAsUpdate(after, encodeStateVector(before));
-    await this.storage.pushDocUpdates(workspaceId, this.docId, [delta], ACTOR);
+    await this.storage.pushDocUpdates(workspaceId, this.docId, [delta], actorId);
     this.logger.debug(`pushed folder delta to ${workspaceId}/${this.docId}`);
   }
 
@@ -186,7 +212,6 @@ export class WorkspaceFolderPort implements FolderPort {
 }
 
 const ORIGIN = 'WorkspaceFolderPort';
-const ACTOR = 'copilot';
 
 type FolderRow = {
   id: string;
