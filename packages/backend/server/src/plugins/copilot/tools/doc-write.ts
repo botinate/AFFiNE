@@ -80,8 +80,14 @@ export const buildDocUpdateHandler = (
       .assert('Doc.Update');
     try {
       await writer.updateDoc(options.workspace, docId, content, options.user);
-    } catch {
-      return notFound;
+    } catch (err: any) {
+      // Do NOT collapse every failure into "not found" — the caller has no
+      // way to tell a missing doc from a permission, storage or validation
+      // error, and the real cause never reaches the log either.
+      return toolError(
+        'Doc Update Failed',
+        `${err?.message ?? String(err)} (docId: ${docId})`
+      );
     }
 
     return {
@@ -123,8 +129,11 @@ export const buildDocUpdateMetaHandler = (
         { title: sanitizedTitle },
         options.user
       );
-    } catch {
-      return notFound;
+    } catch (err: any) {
+      return toolError(
+        'Doc Meta Update Failed',
+        `${err?.message ?? String(err)} (docId: ${docId})`
+      );
     }
 
     return {
