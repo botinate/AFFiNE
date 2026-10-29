@@ -57,7 +57,18 @@ ENV CARGO_PROFILE_RELEASE_LTO=false \
     CARGO_PROFILE_RELEASE_DEBUG=0 \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256
 ARG CARGO_JOBS=4
-RUN CARGO_BUILD_JOBS=${CARGO_JOBS} \
+# AFFINE_PRO_PUBLIC_KEY is an option_env!() baked into the addon; without it
+# the self-hosted server aborts at boot with "must be embedded in self-hosted
+# server-native builds". Upstream CI passes it as a secret. The value below is
+# the DEBUG_AFFINE_PRO_PUBLIC_KEY constant committed in
+# packages/backend/native/src/lib.rs — a public verification key, so shipping
+# it is no different from shipping the source.
+RUN export AFFINE_PRO_PUBLIC_KEY="$(printf '%b' '\
+-----BEGIN PUBLIC KEY-----\n\
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEObwJiTmbui7rkWfPJ7Lozvuy2Rcl\n\
+otcrb0V6dlS2ijKEShm7ZttTwQn08xzesdjX/AxpoR5X9yfoHkauIBuuMQ==\n\
+-----END PUBLIC KEY-----')" \
+ && CARGO_BUILD_JOBS=${CARGO_JOBS} \
     yarn workspace @affine/server-native build --target ${RUST_TARGET}
 # native/index.js requires the arch-suffixed name (server-native.arm64.node),
 # which is what upstream's CI renames the napi output to. Un-suffixed, rspack
