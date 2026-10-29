@@ -25,3 +25,7 @@
 # Sourcemaps (keep server sourcemap for backend stacktraces)
 **/*.map
 !packages/backend/server/dist/main.js.map
+
+# The build file itself must not be in the context — editing it would
+# invalidate COPY . . and force a full cargo rebuild on every iteration.
+.github/deployment/node/Dockerfile*
