@@ -69,6 +69,9 @@ RUN case "${RUST_TARGET}" in \
     esac \
  && mv ./packages/backend/native/server-native.node \
        "./packages/backend/native/${F}" \
+ && for other in server-native.arm64.node server-native.armv7.node server-native.x64.node; do \
+      [ -f "./packages/backend/native/${other}" ] || : > "./packages/backend/native/${other}"; \
+    done \
  && ls -la ./packages/backend/native/
 
 # ── frontends ─────────────────────────────────────────────────────────────
