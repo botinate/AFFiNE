@@ -59,6 +59,17 @@ ENV CARGO_PROFILE_RELEASE_LTO=false \
 ARG CARGO_JOBS=4
 RUN CARGO_BUILD_JOBS=${CARGO_JOBS} \
     yarn workspace @affine/server-native build --target ${RUST_TARGET}
+# native/index.js requires the arch-suffixed name (server-native.arm64.node),
+# which is what upstream's CI renames the napi output to. Un-suffixed, rspack
+# fails with "Can't resolve './server-native.arm64.node'".
+RUN case "${RUST_TARGET}" in \
+      aarch64-*) F=server-native.arm64.node ;; \
+      armv7-*)   F=server-native.armv7.node ;; \
+      *)         F=server-native.x64.node ;; \
+    esac \
+ && mv ./packages/backend/native/server-native.node \
+       "./packages/backend/native/${F}" \
+ && ls -la ./packages/backend/native/
 
 # ── frontends ─────────────────────────────────────────────────────────────
 FROM base AS frontend
@@ -68,9 +79,16 @@ RUN yarn affine @affine/web build \
 
 # ── server bundle ─────────────────────────────────────────────────────────
 FROM base AS server
-COPY --from=native /src/packages/backend/native/server-native.node \
-                   ./packages/backend/native/server-native.node
-RUN yarn workspace @affine/server build
+ARG RUST_TARGET
+COPY --from=native /src/packages/backend/native/ ./packages/backend/native/
+RUN case "${RUST_TARGET}" in \
+      aarch64-*) F=server-native.arm64.node ;; \
+      armv7-*)   F=server-native.armv7.node ;; \
+      *)         F=server-native.x64.node ;; \
+    esac \
+ && echo "expecting ${F}" \
+ && ls -la ./packages/backend/native/${F} \
+ && yarn workspace @affine/server build
 
 # ── production node_modules + prisma ──────────────────────────────────────
 FROM base AS release-deps
