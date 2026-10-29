@@ -49,7 +49,16 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # (see .github/actions/build-rust/action.yml)
 ENV CC="clang -D_BSD_SOURCE -DAT_HWCAP2=26" \
     TARGET_CC="clang -D_BSD_SOURCE -DAT_HWCAP2=26"
-RUN yarn workspace @affine/server-native build --target ${RUST_TARGET}
+# The default release profile OOMs the Docker VM (7.75 GiB) while linking
+# affine_server_native — it pulls in llm_adapter, llm_runtime, pdf_oxide and
+# sqlx, and LTO + debug info push the link well past that. The host has 48 GiB
+# but the VM is the ceiling and cannot be raised from inside a build.
+ENV CARGO_PROFILE_RELEASE_LTO=false \
+    CARGO_PROFILE_RELEASE_DEBUG=0 \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256
+ARG CARGO_JOBS=4
+RUN CARGO_BUILD_JOBS=${CARGO_JOBS} \
+    yarn workspace @affine/server-native build --target ${RUST_TARGET}
 
 # ── frontends ─────────────────────────────────────────────────────────────
 FROM base AS frontend
