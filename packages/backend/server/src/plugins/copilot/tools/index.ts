@@ -1,6 +1,7 @@
 export * from './artifact';
 export * from './code-artifact';
 export * from './conversation-summary';
+export * from './database';
 export * from './doc-canvas-read';
 export * from './doc-compose';
 export * from './doc-read';

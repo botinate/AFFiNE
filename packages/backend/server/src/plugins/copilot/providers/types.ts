@@ -90,6 +90,7 @@ export const PromptToolsSchema = z
     'folderCreate',
     'folderList',
     'docToFolder',
+    'docAddDatabaseRows',
     'frontendGetEditorState',
     'frontendReadSelection',
     'frontendReadNodes',

@@ -3,7 +3,7 @@ import { forwardRef, Inject, Injectable } from '@nestjs/common';
 
 import { Config } from '../../../base';
 import { DocReader, DocWriter } from '../../../core/doc';
-import { WorkspaceFolderPort } from '../../../core/organize';
+import { WorkspaceDatabasePort, WorkspaceFolderPort } from '../../../core/organize';
 import { PermissionAccess } from '../../../core/permission';
 import { Models } from '../../../models';
 import { DelegatedEditorService } from '../delegated/service';
@@ -22,6 +22,7 @@ import {
   buildDocUpdateMetaHandler,
   buildFolderCreateHandler,
   buildFolderListHandler,
+  buildAddDatabaseRowsHandler,
   buildDocToFolderHandler,
   type CopilotTool,
   type CopilotToolSet,
@@ -36,6 +37,7 @@ import {
   createDocSearchTool,
   createDocUpdateMetaTool,
   createDocUpdateTool,
+  createAddDatabaseRowsTool,
   createDocToFolderTool,
   createExaCrawlTool,
   createExaSearchTool,
@@ -67,7 +69,8 @@ export class ToolRuntime {
     private readonly retrieval: DocumentRetrievalService,
     private readonly artifactRetrieval: ArtifactRetrievalService,
     private readonly delegated: DelegatedEditorService,
-    private readonly folders: WorkspaceFolderPort
+    private readonly folders: WorkspaceFolderPort,
+    private readonly databases: WorkspaceDatabasePort
   ) {}
 
   async getTools(
@@ -260,6 +263,16 @@ export class ToolRuntime {
           const placeDoc = buildDocToFolderHandler(this.folders, this.ac);
           tools.doc_to_folder = createDocToFolderTool(
             placeDoc.bind(null, options)
+          );
+          break;
+        }
+        case 'docAddDatabaseRows': {
+          const addRows = buildAddDatabaseRowsHandler(
+            this.databases,
+            this.ac
+          );
+          tools.doc_add_database_rows = createAddDatabaseRowsTool(
+            addRows.bind(null, options)
           );
           break;
         }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { DocStorageModule, PgWorkspaceDocStorageAdapter } from '../doc';
+import { WorkspaceDatabasePort } from './database-port';
 import { WorkspaceFolderPort } from './workspace-folder-port';
 
 /**
@@ -20,10 +21,17 @@ import { WorkspaceFolderPort } from './workspace-folder-port';
         new WorkspaceFolderPort(storage),
       inject: [PgWorkspaceDocStorageAdapter],
     },
+    {
+      provide: WorkspaceDatabasePort,
+      useFactory: (storage: PgWorkspaceDocStorageAdapter) =>
+        new WorkspaceDatabasePort(storage),
+      inject: [PgWorkspaceDocStorageAdapter],
+    },
   ],
-  exports: [WorkspaceFolderPort],
+  exports: [WorkspaceFolderPort, WorkspaceDatabasePort],
 })
 export class OrganizeModule {}
 
+export { WorkspaceDatabasePort } from './database-port';
 export { WorkspaceFolderPort } from './workspace-folder-port';
 export type { WorkspaceDocStorage } from './workspace-folder-port';
