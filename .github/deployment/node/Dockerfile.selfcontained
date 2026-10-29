@@ -63,7 +63,9 @@ ARG CARGO_JOBS=4
 # the DEBUG_AFFINE_PRO_PUBLIC_KEY constant committed in
 # packages/backend/native/src/lib.rs — a public verification key, so shipping
 # it is no different from shipping the source.
-RUN export AFFINE_PRO_PUBLIC_KEY="$(printf '%b' '\
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    export AFFINE_PRO_PUBLIC_KEY="$(printf '%b' '\
 -----BEGIN PUBLIC KEY-----\n\
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEObwJiTmbui7rkWfPJ7Lozvuy2Rcl\n\
 otcrb0V6dlS2ijKEShm7ZttTwQn08xzesdjX/AxpoR5X9yfoHkauIBuuMQ==\n\
