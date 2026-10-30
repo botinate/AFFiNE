@@ -27,6 +27,7 @@ pub struct ByokCapabilityInput {
 pub struct ByokModelDeclarationInput {
   pub model_id: String,
   pub enabled: bool,
+  pub interface: Option<String>,
   pub capabilities: Vec<ByokCapabilityInput>,
 }
 
@@ -227,11 +228,38 @@ pub(crate) enum ByokEndpoint {
   OpenAiCompatible { url: String, dialect: OpenAiDialect },
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ModelInterface {
+  #[default]
+  Chat,
+  AudioTranscriptions,
+}
+
+impl ModelInterface {
+  pub(crate) fn as_str(self) -> &'static str {
+    match self {
+      Self::Chat => "chat",
+      Self::AudioTranscriptions => "audio_transcriptions",
+    }
+  }
+
+  fn parse(value: Option<&str>) -> Result<Self, ByokContractError> {
+    match value {
+      None | Some("") | Some("chat") => Ok(Self::Chat),
+      Some("audio_transcriptions") => Ok(Self::AudioTranscriptions),
+      Some(_) => Err(ByokContractError::Interface),
+    }
+  }
+}
+
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ByokModelDeclaration {
   pub(crate) model_id: String,
   pub(crate) enabled: bool,
+  #[serde(default)]
+  pub(crate) interface: ModelInterface,
   pub(crate) capabilities: Vec<DeclaredModelCapability>,
 }
 
@@ -256,6 +284,8 @@ pub(crate) enum ByokContractError {
   Capability(String),
   #[error("declared capability exceeds provider or model upper bound")]
   CapabilityUpperBound,
+  #[error("invalid model interface")]
+  Interface,
 }
 
 impl ByokProfileDefinition {
@@ -318,6 +348,7 @@ pub(crate) fn validate_definition(
     models.push(ByokModelDeclaration {
       model_id,
       enabled: model.enabled,
+      interface: ModelInterface::parse(model.interface.as_deref())?,
       capabilities,
     });
   }
@@ -467,6 +498,7 @@ impl From<ByokProfileDefinition> for ByokProfileDefinitionInput {
         .map(|model| ByokModelDeclarationInput {
           model_id: model.model_id,
           enabled: model.enabled,
+          interface: Some(model.interface.as_str().to_string()),
           capabilities: model.capabilities.into_iter().map(capability_input).collect(),
         })
         .collect(),
@@ -505,6 +537,8 @@ pub(super) fn capability_input(capability: DeclaredModelCapability) -> ByokCapab
 
 #[cfg(test)]
 mod tests {
+  use serde_json::json;
+
   use super::*;
 
   fn definition(model_id: &str, capabilities: Vec<ByokCapabilityInput>) -> ByokProfileDefinitionInput {
@@ -517,6 +551,7 @@ mod tests {
       models: vec![ByokModelDeclarationInput {
         model_id: model_id.to_string(),
         enabled: true,
+        interface: None,
         capabilities,
       }],
     }
@@ -539,6 +574,40 @@ mod tests {
     assert_eq!(validated.models[0].model_id, "vendor/model:latest");
     assert!(validated.models[0].capabilities[0].features.is_empty());
     assert_eq!(validated.endpoint_identity(), "https://example.com/v1");
+    assert_eq!(validated.models[0].interface, ModelInterface::Chat);
+  }
+
+  #[test]
+  fn parses_model_interface_and_defaults_to_chat() {
+    let mut input = definition("edison-en", vec![text_capability()]);
+    input.models[0].interface = Some("audio_transcriptions".to_string());
+    let validated = validate_definition("openai", input).unwrap();
+    assert_eq!(validated.models[0].interface, ModelInterface::AudioTranscriptions);
+    assert_eq!(
+      ByokProfileDefinitionInput::from(validated).models[0].interface.as_deref(),
+      Some("audio_transcriptions")
+    );
+
+    let mut input = definition("edison-en", vec![text_capability()]);
+    input.models[0].interface = Some("whisper".to_string());
+    assert!(matches!(
+      validate_definition("openai", input),
+      Err(ByokContractError::Interface)
+    ));
+  }
+
+  #[test]
+  fn legacy_definition_json_without_interface_parses() {
+    let legacy = json!({
+      "endpoint": { "kind": "provider_default" },
+      "models": [{
+        "modelId": "gpt-4o-mini",
+        "enabled": true,
+        "capabilities": [{ "input": ["text"], "output": ["text"], "features": [], "attachmentKinds": [], "attachmentSources": [] }]
+      }]
+    });
+    let parsed: ByokProfileDefinition = serde_json::from_value(legacy).unwrap();
+    assert_eq!(parsed.models[0].interface, ModelInterface::Chat);
   }
 
   #[test]

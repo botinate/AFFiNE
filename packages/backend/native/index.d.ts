@@ -342,6 +342,7 @@ export interface ByokLocalLeaseOutput {
 export interface ByokModelDeclarationInput {
   modelId: string
   enabled: boolean
+  interface?: string
   capabilities: Array<ByokCapabilityInput>
 }
 

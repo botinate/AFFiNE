@@ -2712,12 +2712,14 @@ type WorkspaceByokEndpointType {
 input WorkspaceByokModelDeclarationInput {
   capabilities: [WorkspaceByokCapabilityInput!]!
   enabled: Boolean!
+  interface: String
   modelId: String!
 }
 
 type WorkspaceByokModelDeclarationType {
   capabilities: [WorkspaceByokCapabilityType!]!
   enabled: Boolean!
+  interface: String
   modelId: String!
 }
 

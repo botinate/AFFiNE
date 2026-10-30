@@ -215,6 +215,7 @@ mod tests {
       models: vec![ByokModelDeclarationInput {
         model_id: "gpt-4o-mini".to_string(),
         enabled: true,
+        interface: None,
         capabilities: vec![ByokCapabilityInput {
           input: vec!["text".to_string()],
           output: vec!["text".to_string()],

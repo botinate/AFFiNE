@@ -12,7 +12,7 @@ pub use contract::{
   CreateByokLocalLeaseProviderInput, CreateByokProfileInput, ProbeByokDraftInput, ProbeByokProfileInput,
   ReorderByokProfilesInput, ReplaceByokProfileInput, RotateByokCredentialInput,
 };
-pub(crate) use contract::{ByokEndpoint, ByokModelDeclaration, ByokProfileDefinition, validate_definition};
+pub(crate) use contract::{ByokEndpoint, ByokModelDeclaration, ByokProfileDefinition, ModelInterface, validate_definition};
 pub(crate) use envelope::{CredentialEnvelopeKey, SensitiveCredential, local_aad, server_aad};
 pub(crate) use policy::ByokPolicy;
 pub use policy::ByokPolicyOutput;

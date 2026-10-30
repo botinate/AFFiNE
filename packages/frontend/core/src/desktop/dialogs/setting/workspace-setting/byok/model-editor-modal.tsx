@@ -67,6 +67,7 @@ export const ModelEditorModal = ({
         {
           modelId: modelId.trim(),
           enabled: editingModel?.enabled ?? true,
+          interface: editingModel?.interface ?? null,
           capabilities: capabilitiesForUseCases(editingModel, selectedUseCases),
         },
       ]);

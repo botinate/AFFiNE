@@ -62,6 +62,9 @@ class WorkspaceByokModelDeclarationType {
   @Field(() => Boolean)
   enabled!: boolean;
 
+  @Field(() => String, { nullable: true })
+  interface!: string | null;
+
   @Field(() => [WorkspaceByokCapabilityType])
   capabilities!: WorkspaceByokCapabilityType[];
 }
@@ -298,6 +301,9 @@ class WorkspaceByokModelDeclarationInput {
 
   @Field(() => Boolean)
   enabled!: boolean;
+
+  @Field(() => String, { nullable: true })
+  interface?: string | null;
 
   @Field(() => [WorkspaceByokCapabilityInput])
   capabilities!: WorkspaceByokCapabilityInput[];
@@ -722,6 +728,10 @@ function nativeDefinition(input: WorkspaceByokProfileDefinitionInput) {
       url: input.endpoint.url ?? undefined,
       dialect: input.endpoint.dialect ?? undefined,
     },
+    models: input.models.map(model => ({
+      ...model,
+      interface: model.interface ?? undefined,
+    })),
   };
 }
 

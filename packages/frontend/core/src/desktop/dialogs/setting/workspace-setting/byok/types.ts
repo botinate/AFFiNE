@@ -3,6 +3,7 @@ import {
   type GraphQLQuery,
   type QueryOptions,
   type QueryResponse,
+  type WorkspaceByokProfileDefinitionInput,
   type WorkspaceByokSettingsQuery,
 } from '@affine/graphql';
 
@@ -12,8 +13,7 @@ export const ByokStorage = {
 } as const;
 export type ByokStorage = (typeof ByokStorage)[keyof typeof ByokStorage];
 
-export type ByokDefinition =
-  WorkspaceByokSettingsQuery['workspace']['byokSettings']['profiles'][number]['definition'];
+export type ByokDefinition = WorkspaceByokProfileDefinitionInput;
 
 type ByokKeyBase = {
   id: string;

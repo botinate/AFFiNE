@@ -43,6 +43,7 @@ query workspaceByokSettings($id: String!, $from: DateTime!, $to: DateTime!) {
           models {
             modelId
             enabled
+            interface
             capabilities {
               input
               output

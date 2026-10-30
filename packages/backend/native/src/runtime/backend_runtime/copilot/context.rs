@@ -217,6 +217,7 @@ fn load_managed_profiles(
         models: vec![crate::llm::byok::ByokModelDeclaration {
           model_id: model_id.clone(),
           enabled: true,
+          interface: crate::llm::byok::ModelInterface::default(),
           capabilities,
         }],
         sort_order: index as i32,

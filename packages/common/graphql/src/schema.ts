@@ -3423,6 +3423,7 @@ export interface WorkspaceByokEndpointType {
 export interface WorkspaceByokModelDeclarationInput {
   capabilities: Array<WorkspaceByokCapabilityInput>;
   enabled: Scalars['Boolean']['input'];
+  interface?: InputMaybe<Scalars['String']['input']>;
   modelId: Scalars['String']['input'];
 }
 
@@ -3430,6 +3431,7 @@ export interface WorkspaceByokModelDeclarationType {
   __typename?: 'WorkspaceByokModelDeclarationType';
   capabilities: Array<WorkspaceByokCapabilityType>;
   enabled: Scalars['Boolean']['output'];
+  interface: Maybe<Scalars['String']['output']>;
   modelId: Scalars['String']['output'];
 }
 
@@ -7527,6 +7529,7 @@ export type WorkspaceByokSettingsQuery = {
             __typename?: 'WorkspaceByokModelDeclarationType';
             modelId: string;
             enabled: boolean;
+            interface: string | null;
             capabilities: Array<{
               __typename?: 'WorkspaceByokCapabilityType';
               input: Array<ByokModelInput>;

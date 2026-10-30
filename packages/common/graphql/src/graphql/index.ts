@@ -2892,6 +2892,7 @@ export const workspaceByokSettingsQuery = {
           models {
             modelId
             enabled
+            interface
             capabilities {
               input
               output

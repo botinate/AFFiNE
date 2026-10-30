@@ -154,6 +154,7 @@ mod tests {
       models: vec![ByokModelDeclaration {
         model_id: model.to_string(),
         enabled: true,
+        interface: crate::llm::byok::ModelInterface::default(),
         capabilities: vec![DeclaredModelCapability {
           input: vec![ModelInput::Text],
           output: vec![output],

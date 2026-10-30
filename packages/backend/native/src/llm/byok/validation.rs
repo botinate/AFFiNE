@@ -52,6 +52,7 @@ mod tests {
         .map(|model| ByokModelDeclaration {
           model_id: (*model).to_string(),
           enabled: true,
+          interface: Default::default(),
           capabilities: vec![DeclaredModelCapability {
             input: vec![ModelInput::Text],
             output: vec![ModelOutput::Text],

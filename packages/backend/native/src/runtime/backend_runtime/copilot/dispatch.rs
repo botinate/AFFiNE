@@ -18,11 +18,11 @@ use serde::Serialize;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use super::{COPILOT_REQUEST_TIMEOUT, RuntimeError, RuntimeResult, context};
+use super::{COPILOT_REQUEST_TIMEOUT, RuntimeError, RuntimeResult, asr, context};
 use crate::{
   llm::{
     LlmImageRequestContract,
-    byok::CredentialEnvelopeKey,
+    byok::{CredentialEnvelopeKey, ModelInterface},
     route::{
       AuthorizedProviderProfile, AuthorizedTargetRef, CatalogSlot, CredentialRef, RouteOperation,
       with_request_requirements,
@@ -58,8 +58,21 @@ pub(super) enum ProductUsage {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct CopilotExecutionResult {
-  events: Vec<ProductEvent>,
-  result: serde_json::Value,
+  pub(super) events: Vec<ProductEvent>,
+  pub(super) result: serde_json::Value,
+}
+
+pub(super) fn route_identity(profile: &AuthorizedProviderProfile, model: &str) -> RouteIdentity {
+  RouteIdentity {
+    profile_id: profile.profile_id.clone(),
+    source: match profile.source {
+      crate::llm::route::ProfileSource::Server => "server",
+      crate::llm::route::ProfileSource::Local => "local",
+      crate::llm::route::ProfileSource::Managed => "affine_cloud",
+    },
+    provider: profile.provider.clone(),
+    model: model.to_string(),
+  }
 }
 
 pub(super) struct CompiledExecution {
@@ -108,6 +121,18 @@ pub(super) fn execute(
   candidates: Vec<AuthorizedTargetRef>,
   managed_credentials: HashMap<String, Zeroizing<String>>,
 ) -> RuntimeResult<CopilotExecutionResult> {
+  if matches!(slot.operation, RouteOperation::Transcription)
+    && candidates.iter().any(|candidate| {
+      profiles
+        .get(candidate.profile_index)
+        .and_then(|profile| profile.models.get(candidate.model_index))
+        .is_some_and(|model| model.interface == ModelInterface::AudioTranscriptions)
+    })
+  {
+    let key = CredentialEnvelopeKey::derive(config.private_key.as_bytes())
+      .map_err(|_| RuntimeError::invalid_state("credential_unavailable"))?;
+    return asr::execute_transcription(&request, &profiles, &candidates, &managed_credentials, &key);
+  }
   let execution = compile_execution(&config, slot, request, &profiles, &candidates, &managed_credentials)?;
   let mut runtime_events = Vec::new();
   let response = dispatch_compiled_plan(&DefaultHttpClient::default(), &execution.plan, |event| {
@@ -138,13 +163,25 @@ pub(super) fn execute_embeddings(
   response
     .embeddings
     .into_iter()
-    .map(|vector| {
-      if vector.len() != 1024 || vector.iter().any(|value| !value.is_finite()) {
-        return Err(RuntimeError::invalid_state("invalid_embedding_vector"));
-      }
-      Ok(vector.into_iter().map(|value| value as f32).collect())
-    })
+    .map(pad_embedding)
     .collect()
+}
+
+/// Normalizes a provider embedding to the fixed 1024 storage contract.
+///
+/// ponytail: zero-pad shorter vectors (cosine distances are exact under
+/// zero-padding, so models like a 768-dim `ebbinghaus` coexist with 1024-dim
+/// ones in `vector(1024)`). Upgrade to a configurable width + migration if a
+/// >1024-dim model that ignores `dimensions` is ever needed.
+fn pad_embedding(vector: Vec<f64>) -> RuntimeResult<Vec<f32>> {
+  if vector.is_empty() || vector.len() > 1024 || vector.iter().any(|value| !value.is_finite()) {
+    return Err(RuntimeError::invalid_state("invalid_embedding_vector"));
+  }
+  let mut padded = vec![0.0_f32; 1024];
+  for (slot, value) in padded.iter_mut().zip(vector) {
+    *slot = value as f32;
+  }
+  Ok(padded)
 }
 
 pub(super) fn compile_execution(
@@ -180,19 +217,7 @@ pub(super) fn compile_execution(
     })
     .map_err(|error| RuntimeError::invalid_state(error.to_string()))?;
     let route_id = Uuid::new_v4().to_string();
-    identities.insert(
-      route_id.clone(),
-      RouteIdentity {
-        profile_id: profile.profile_id.clone(),
-        source: match profile.source {
-          crate::llm::route::ProfileSource::Server => "server",
-          crate::llm::route::ProfileSource::Local => "local",
-          crate::llm::route::ProfileSource::Managed => "affine_cloud",
-        },
-        provider: profile.provider.clone(),
-        model: target.model.clone(),
-      },
-    );
+    identities.insert(route_id.clone(), route_identity(profile, &target.model));
     let protocol = protocol(target.protocol);
     let route = ExecutablePreparedRoute::new(protocol, target.model, target.config, request.clone())
       .map_err(|error| RuntimeError::invalid_input(error.to_string()))?;
@@ -272,7 +297,7 @@ fn collect_message_attachments(
   }
 }
 
-fn resolve_credential(
+pub(super) fn resolve_credential(
   key: &CredentialEnvelopeKey,
   profile: &AuthorizedProviderProfile,
   managed_credentials: &HashMap<String, Zeroizing<String>>,
@@ -400,7 +425,7 @@ fn identity(identities: &HashMap<String, RouteIdentity>, route_id: &str) -> Runt
     .ok_or_else(|| RuntimeError::invalid_state("runtime emitted an unknown route id"))
 }
 
-fn response_value(response: ExecutableResponse) -> RuntimeResult<serde_json::Value> {
+pub(super) fn response_value(response: ExecutableResponse) -> RuntimeResult<serde_json::Value> {
   match response {
     ExecutableResponse::Chat(response) => serialize_response(response),
     ExecutableResponse::Structured(response) => serialize_response(response),
@@ -426,6 +451,19 @@ mod tests {
 
   use super::*;
   use crate::llm::route::slot;
+
+  #[test]
+  fn pads_embedding_vectors_to_storage_width() {
+    let padded = pad_embedding(vec![0.25; 768]).unwrap();
+    assert_eq!(padded.len(), 1024);
+    assert_eq!(padded[0], 0.25);
+    assert_eq!(padded[767], 0.25);
+    assert_eq!(padded[768], 0.0);
+    assert_eq!(pad_embedding(vec![0.5; 1024]).unwrap().len(), 1024);
+    assert!(pad_embedding(Vec::new()).is_err());
+    assert!(pad_embedding(vec![0.0; 1025]).is_err());
+    assert!(pad_embedding(vec![f64::NAN, 1.0]).is_err());
+  }
 
   #[test]
   fn image_dispatch_accepts_napi_request_contract() {

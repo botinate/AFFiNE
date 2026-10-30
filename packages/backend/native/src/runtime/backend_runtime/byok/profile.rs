@@ -601,6 +601,7 @@ mod tests {
         .map(|(model_id, output)| ByokModelDeclarationInput {
           model_id: (*model_id).to_string(),
           enabled: true,
+          interface: None,
           capabilities: vec![ByokCapabilityInput {
             input: vec!["text".to_string()],
             output: vec![(*output).to_string()],
