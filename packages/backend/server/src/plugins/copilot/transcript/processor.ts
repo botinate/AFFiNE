@@ -270,8 +270,14 @@ export class CopilotTranscriptionProcessor {
     if (normalizedTranscript) {
       const messages =
         await this.buildMeetingSummaryMessages(normalizedTranscript);
+      // The model selection pins the transcription slices only; the meeting
+      // summary is a text/structured step and must fall back to route choice.
+      const summaryInput: ActionRuntimeBridgeInput = {
+        ...input,
+        step: { ...input.step, profileId: undefined, modelId: undefined },
+      };
       const output = await this.retry.generateStructuredValue(
-        input,
+        summaryInput,
         messages,
         TRANSCRIPT_SUMMARY_PROMPT_REF,
         MeetingSummaryV2Contract,
