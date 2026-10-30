@@ -9641,6 +9641,10 @@ export function useAFFiNEI18N(): {
       */
     ["com.affine.recording.recording.unnamed"](): string;
     /**
+      * `Transcription model`
+      */
+    ["com.affine.recording.transcription-model"](): string;
+    /**
       * `Start`
       */
     ["com.affine.recording.start"](): string;

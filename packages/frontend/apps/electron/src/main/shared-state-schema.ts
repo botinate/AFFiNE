@@ -85,6 +85,18 @@ export const MeetingSettingsSchema = z.object({
 
   // recording reactions to new meeting events
   recordingMode: z.enum(['none', 'prompt', 'auto-start']).default('prompt'),
+
+  // transcription models available to pick from in the recording overlay
+  // (kept in sync from the workspace BYOK profiles by the main window)
+  transcriptionModels: z
+    .array(z.object({ profileId: z.string(), modelId: z.string() }))
+    .default([]),
+
+  // which transcription model the overlay uses; null routes by capability order
+  transcriptionTarget: z
+    .object({ profileId: z.string(), modelId: z.string() })
+    .nullable()
+    .default(null),
 });
 
 export type MeetingSettingsSchema = z.infer<typeof MeetingSettingsSchema>;

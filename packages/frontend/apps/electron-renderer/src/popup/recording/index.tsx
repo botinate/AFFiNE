@@ -1,7 +1,7 @@
 import { Button } from '@affine/component';
 import { useAsyncCallback } from '@affine/core/components/hooks/affine-async-hooks';
 import { appIconMap } from '@affine/core/utils';
-import { apis, events } from '@affine/electron-api';
+import { apis, events, sharedStorage } from '@affine/electron-api';
 import { useI18n } from '@affine/i18n';
 import track from '@affine/track';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -54,8 +54,48 @@ export const useRecordingStatus = () => {
 
 const appIcon = appIconMap[BUILD_CONFIG.appBuildType];
 
+type TranscriptionModelTarget = { profileId: string; modelId: string };
+type MeetingSettings = {
+  transcriptionModels?: TranscriptionModelTarget[];
+  transcriptionTarget?: TranscriptionModelTarget | null;
+};
+const MEETING_SETTINGS_KEY = 'meetingSettings';
+
+const useMeetingSettings = () => {
+  const [settings, setSettings] = useState<MeetingSettings>({});
+
+  useEffect(() => {
+    const storage = sharedStorage?.globalState;
+    if (!storage) {
+      return;
+    }
+    setSettings(storage.get<MeetingSettings>(MEETING_SETTINGS_KEY) ?? {});
+    const unsubscribe = storage.watch<MeetingSettings>(
+      MEETING_SETTINGS_KEY,
+      value => setSettings(value ?? {})
+    );
+    return () => unsubscribe?.();
+  }, []);
+
+  return settings;
+};
+
+const setTranscriptionTarget = (target: TranscriptionModelTarget | null) => {
+  const storage = sharedStorage?.globalState;
+  if (!storage) {
+    return;
+  }
+  storage.set(MEETING_SETTINGS_KEY, {
+    ...(storage.get<MeetingSettings>(MEETING_SETTINGS_KEY) ?? {}),
+    transcriptionTarget: target,
+  });
+};
+
 export function Recording() {
   const status = useRecordingStatus();
+  const meetingSettings = useMeetingSettings();
+  const transcriptionModels = meetingSettings.transcriptionModels ?? [];
+  const transcriptionTarget = meetingSettings.transcriptionTarget ?? null;
   const trackedNewRecordingIdsRef = useRef<Set<number>>(new Set());
 
   const t = useI18n();
@@ -229,6 +269,38 @@ export function Recording() {
     <div className={styles.root}>
       <img className={styles.affineIcon} src={appIcon} alt="AFFiNE" />
       <div className={styles.text}>{textElement}</div>
+      {transcriptionModels.length > 0 ? (
+        <select
+          className={styles.modelSelect}
+          aria-label={t['com.affine.recording.transcription-model']()}
+          title={t['com.affine.recording.transcription-model']()}
+          value={
+            transcriptionTarget
+              ? `${transcriptionTarget.profileId}:${transcriptionTarget.modelId}`
+              : ''
+          }
+          onChange={event => {
+            const value = event.target.value;
+            const model =
+              transcriptionModels.find(
+                model => `${model.profileId}:${model.modelId}` === value
+              ) ?? null;
+            setTranscriptionTarget(model);
+          }}
+        >
+          <option value="">
+            {t['com.affine.audio.transcribe.model.default']()}
+          </option>
+          {transcriptionModels.map(model => (
+            <option
+              key={`${model.profileId}:${model.modelId}`}
+              value={`${model.profileId}:${model.modelId}`}
+            >
+              {model.modelId}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <div className={styles.controls}>{controlsElement}</div>
     </div>
   );

@@ -2403,6 +2403,7 @@
   "com.affine.recording.failed.button": "Open file",
   "com.affine.recording.recording": "{{appName}}'s audio",
   "com.affine.recording.recording.unnamed": "Audio recording",
+  "com.affine.recording.transcription-model": "Transcription model",
   "com.affine.recording.start": "Start",
   "com.affine.recording.dismiss": "Dismiss",
   "com.affine.recording.stop": "Stop",

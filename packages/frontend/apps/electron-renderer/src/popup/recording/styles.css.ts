@@ -37,3 +37,9 @@ export const controls = style({
   display: 'flex',
   gap: 2,
 });
+
+export const modelSelect = style({
+  fontSize: cssVar('fontSm'),
+  maxWidth: 96,
+  ['WebkitAppRegion' as string]: 'no-drag',
+});

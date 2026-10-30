@@ -1,6 +1,7 @@
 import type { DocProps } from '@affine/core/blocksuite/initialization';
 import { DocsService } from '@affine/core/modules/doc';
 import { AudioAttachmentService } from '@affine/core/modules/media/services/audio-attachment';
+import { MeetingSettingsService } from '@affine/core/modules/media/services/meeting-settings';
 import { WorkbenchService } from '@affine/core/modules/workbench';
 import { DebugLogger } from '@affine/debug';
 import { apis, events } from '@affine/electron-api';
@@ -253,8 +254,19 @@ async function createRecordingDoc(
     using audioAttachment = currentWorkspaceEntity.scope
       .get(AudioAttachmentService)
       .get(model);
+    const meetingSettings = currentWorkspaceEntity.scope.get(
+      MeetingSettingsService
+    ).settings;
+    const target = meetingSettings.transcriptionTarget;
+    const targetIsValid =
+      !!target &&
+      meetingSettings.transcriptionModels.some(
+        model =>
+          model.profileId === target.profileId &&
+          model.modelId === target.modelId
+      );
     audioAttachment?.obj
-      .transcribe()
+      .transcribe(targetIsValid ? target : undefined)
       .then(() => {
         track.doc.editor.audioBlock.transcribeRecording({
           type: 'Meeting record',
@@ -409,4 +421,22 @@ export function setupRecordingEvents(frameworkProvider: FrameworkProvider) {
     clearRetry();
     void processNextImport().catch(console.error);
   });
+
+  // Keep the recording overlay's transcription-model picker fresh.
+  const syncTranscriptionModels = () => {
+    using currentWorkspace = getCurrentWorkspace(frameworkProvider);
+    if (!currentWorkspace) {
+      return;
+    }
+    const meetingSettings = currentWorkspace.workspace.scope.get(
+      MeetingSettingsService
+    );
+    void meetingSettings
+      .refreshTranscriptionModels(currentWorkspace.workspace)
+      .catch(error => {
+        logger.error('Failed to refresh transcription models', error);
+      });
+  };
+  syncTranscriptionModels();
+  events?.recording.onRecordingStatusChanged(syncTranscriptionModels);
 }

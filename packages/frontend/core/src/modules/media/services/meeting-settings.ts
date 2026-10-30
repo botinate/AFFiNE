@@ -2,11 +2,18 @@ import type {
   MeetingSettingsKey,
   MeetingSettingsSchema,
 } from '@affine/electron/main/shared-state-schema';
+import {
+  workspaceByokSettingsQuery,
+  type WorkspaceByokSettingsQuery,
+} from '@affine/graphql';
 import { LiveData, Service } from '@toeverything/infra';
 import { defaults } from 'lodash-es';
 
+import { WorkspaceServerService } from '../../cloud';
 import { DesktopApiService } from '../../desktop-api';
 import type { GlobalStateService } from '../../storage';
+import type { WorkspaceService } from '../../workspace';
+import type { TranscriptionModelTarget } from '../entities/audio-attachment-block';
 
 const MEETING_SETTINGS_KEY: typeof MeetingSettingsKey = 'meetingSettings';
 
@@ -17,6 +24,8 @@ const defaultMeetingSettings: MeetingSettingsSchema = {
   autoTranscriptionSummary: true,
   autoTranscriptionTodo: true,
   recordingMode: 'prompt',
+  transcriptionModels: [],
+  transcriptionTarget: null,
 };
 
 export class MeetingSettingsService extends Service {
@@ -48,6 +57,60 @@ export class MeetingSettingsService extends Service {
       ...this.settings$.value,
       betaDisclaimerAccepted: accepted,
     });
+  }
+
+  setTranscriptionTarget(target: TranscriptionModelTarget | null) {
+    this.globalStateService.globalState.set(MEETING_SETTINGS_KEY, {
+      ...this.settings$.value,
+      transcriptionTarget: target,
+    });
+  }
+
+  syncTranscriptionModels(models: TranscriptionModelTarget[]) {
+    const current = this.settings$.value.transcriptionModels;
+    if (
+      current.length === models.length &&
+      current.every(
+        (model, index) =>
+          model.profileId === models[index].profileId &&
+          model.modelId === models[index].modelId
+      )
+    ) {
+      return;
+    }
+    this.globalStateService.globalState.set(MEETING_SETTINGS_KEY, {
+      ...this.settings$.value,
+      transcriptionModels: models,
+    });
+  }
+
+  async refreshTranscriptionModels(workspace: WorkspaceService['workspace']) {
+    const server = workspace.scope.get(WorkspaceServerService).server;
+    if (!server) {
+      return;
+    }
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+    const data: WorkspaceByokSettingsQuery = await server.gql({
+      query: workspaceByokSettingsQuery,
+      variables: {
+        id: workspace.id,
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
+    });
+    this.syncTranscriptionModels(
+      data.workspace.byokSettings.profiles.flatMap(profile =>
+        profile.definition.models
+          .filter(
+            model => model.enabled && model.interface === 'audio_transcriptions'
+          )
+          .map(model => ({
+            profileId: profile.profileId,
+            modelId: model.modelId,
+          }))
+      )
+    );
   }
 
   // we do not want the caller to directly set the settings,
