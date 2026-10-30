@@ -9603,6 +9603,10 @@ export function useAFFiNEI18N(): {
       */
     ["com.affine.audio.transcribe.non-owner.confirm.title"](): string;
     /**
+      * `Default`
+      */
+    ["com.affine.audio.transcribe.model.default"](): string;
+    /**
       * `Audio activity`
       */
     ["com.affine.recording.new"](): string;

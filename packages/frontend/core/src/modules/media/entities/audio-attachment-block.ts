@@ -49,6 +49,11 @@ const colorOptions = [
   cssVarV2.text.highlight.fg.magenta,
 ];
 
+export type TranscriptionModelTarget = {
+  profileId: string;
+  modelId: string;
+};
+
 export class AudioAttachmentBlock extends Entity<AttachmentBlockModel> {
   private readonly refCount$ = new LiveData<number>(0);
   readonly audioMedia: AudioMedia;
@@ -159,6 +164,8 @@ export class AudioAttachmentBlock extends Entity<AttachmentBlockModel> {
             },
             quality: currentTranscriptionBlockProps.transcription.quality,
             sliceManifest,
+            profileId: this.transcriptionTarget?.profileId,
+            modelId: this.transcriptionTarget?.modelId,
           },
         };
       },
@@ -167,12 +174,18 @@ export class AudioAttachmentBlock extends Entity<AttachmentBlockModel> {
     return job;
   }
 
-  private readonly runTranscription = async (retryFailed: boolean) => {
+  private transcriptionTarget: TranscriptionModelTarget | undefined;
+
+  private readonly runTranscription = async (
+    retryFailed: boolean,
+    target?: TranscriptionModelTarget
+  ) => {
     try {
       const initialStatus = this.transcriptionJob.status$.value.status;
       if (initialStatus !== 'waiting-for-job' && initialStatus !== 'failed') {
         return;
       }
+      this.transcriptionTarget = target;
       const status = await this.transcriptionJob.start(retryFailed);
       if (status.status === 'blocked') {
         return status;
@@ -193,7 +206,8 @@ export class AudioAttachmentBlock extends Entity<AttachmentBlockModel> {
 
   readonly resumeTranscription = () => this.runTranscription(false);
 
-  readonly transcribe = () => this.runTranscription(true);
+  readonly transcribe = (target?: TranscriptionModelTarget) =>
+    this.runTranscription(true, target);
 
   private readonly fillTranscriptionResult = async (
     result: TranscriptionResult

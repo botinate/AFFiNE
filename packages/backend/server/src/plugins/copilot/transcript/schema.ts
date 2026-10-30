@@ -97,6 +97,8 @@ export const TranscriptionPayloadV2Schema = z.object({
   quality: TranscriptionQualitySchema.nullable().optional(),
   sliceManifest: z.array(AudioSliceManifestItemSchema).nullable().optional(),
   infos: AudioBlobInfosSchema.nullable().optional(),
+  profileId: z.string().nullable().optional(),
+  modelId: z.string().nullable().optional(),
   normalizedSegments: z
     .array(NormalizedTranscriptSegmentSchema)
     .nullable()
@@ -111,6 +113,8 @@ export const TranscriptionSubmitInputSchema = TranscriptionPayloadV2Schema.pick(
     sourceAudio: true,
     quality: true,
     sliceManifest: true,
+    profileId: true,
+    modelId: true,
   }
 );
 

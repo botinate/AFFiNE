@@ -115,6 +115,8 @@ export class CopilotTranscriptionService {
       sourceAudio: { blobId, ...input?.sourceAudio },
       quality: input?.quality,
       sliceManifest,
+      profileId: input?.profileId,
+      modelId: input?.modelId,
     } satisfies TranscriptionPayloadV2;
   }
 
@@ -188,7 +190,10 @@ export class CopilotTranscriptionService {
 
     await this.runtime.assertRoute(
       'transcript.audio',
-      {},
+      {
+        profileId: input?.profileId ?? undefined,
+        modelId: input?.modelId ?? undefined,
+      },
       {
         user: userId,
         workspace: workspaceId,
@@ -370,6 +375,8 @@ export class CopilotTranscriptionService {
           step: {
             slot: 'transcript.audio',
             builtInRouteId: TRANSCRIPT_PROMPT_REF,
+            profileId: payload.profileId ?? undefined,
+            modelId: payload.modelId ?? undefined,
             messages: [],
             options: {
               user: task.userId,

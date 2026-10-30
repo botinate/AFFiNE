@@ -3005,6 +3005,8 @@ export interface StreamObject {
 }
 
 export interface SubmitAudioTranscriptionInput {
+  modelId?: InputMaybe<Scalars['String']['input']>;
+  profileId?: InputMaybe<Scalars['String']['input']>;
   quality?: InputMaybe<TranscriptionQualityInput>;
   sliceManifest?: InputMaybe<Array<AudioSliceManifestItemInput>>;
   sourceAudio?: InputMaybe<TranscriptionSourceAudioInput>;

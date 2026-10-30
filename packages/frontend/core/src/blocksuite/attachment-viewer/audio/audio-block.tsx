@@ -1,6 +1,8 @@
 import {
   AnimatedTranscribeIcon,
   Button,
+  Menu,
+  MenuItem,
   Tooltip,
   useConfirmModal,
 } from '@affine/component';
@@ -10,9 +12,18 @@ import { useAsyncCallback } from '@affine/core/components/hooks/affine-async-hoo
 import { useSeekTime } from '@affine/core/components/hooks/use-seek-time';
 import { CurrentServerScopeProvider } from '@affine/core/components/providers/current-server-scope';
 import { PublicUserLabel } from '@affine/core/modules/cloud/views/public-user';
+import { WorkspaceServerService } from '@affine/core/modules/cloud';
 import { GlobalDialogService } from '@affine/core/modules/dialogs';
-import type { AudioAttachmentBlock } from '@affine/core/modules/media/entities/audio-attachment-block';
+import type {
+  AudioAttachmentBlock,
+  TranscriptionModelTarget,
+} from '@affine/core/modules/media/entities/audio-attachment-block';
 import { AudioAttachmentService } from '@affine/core/modules/media/services/audio-attachment';
+import { WorkspaceService } from '@affine/core/modules/workspace';
+import {
+  workspaceByokSettingsQuery,
+  type WorkspaceByokSettingsQuery,
+} from '@affine/graphql';
 import { Trans, useI18n } from '@affine/i18n';
 import track from '@affine/track';
 import type { AttachmentBlockModel } from '@blocksuite/affine/model';
@@ -78,82 +89,122 @@ const AttachmentAudioPlayer = ({ block }: { block: AudioAttachmentBlock }) => {
   const enableAi = useEnableAI();
 
   const globalDialogService = useService(GlobalDialogService);
+  const workspaceService = useService(WorkspaceService);
+  const workspaceServerService = useService(WorkspaceServerService);
+  const [targets, setTargets] = useState<TranscriptionModelTarget[]>([]);
 
-  const handleNotesClick = useAsyncCallback(async () => {
-    if (!enableAi || transcribing) {
+  useEffect(() => {
+    const server = workspaceServerService.server;
+    if (!server) {
       return;
     }
-
-    if (transcribed) {
-      block.expanded$.setValue(!expanded);
-      track.doc.editor.audioBlock.openTranscribeNotes({
-        type: 'Meeting record',
-        method: 'success',
-        option: expanded ? 'off' : 'on',
-      });
-      return;
-    }
-
-    if (!block.transcriptionJob.currentUserId) {
-      confirmModal.openConfirmModal({
-        title: t['com.affine.ai.login-required.dialog-title'](),
-        description: t['com.affine.ai.login-required.dialog-content'](),
-        confirmText: t['com.affine.ai.login-required.dialog-confirm'](),
-        confirmButtonOptions: {
-          variant: 'primary',
+    const to = new Date();
+    const from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
+    server
+      .gql({
+        query: workspaceByokSettingsQuery,
+        variables: {
+          id: workspaceService.workspace.id,
+          from: from.toISOString(),
+          to: to.toISOString(),
         },
-        cancelText: t['com.affine.ai.login-required.dialog-cancel'](),
-        onConfirm: () => {
-          globalDialogService.open('sign-in', {});
-        },
-      });
-      track.doc.editor.audioBlock.openTranscribeNotes({
-        type: 'Meeting record',
-        method: 'not signed in',
-      });
-      return;
-    }
+      })
+      .then((data: WorkspaceByokSettingsQuery) => {
+        setTargets(
+          data.workspace.byokSettings.profiles.flatMap(profile =>
+            profile.definition.models
+              .filter(
+                model =>
+                  model.enabled && model.interface === 'audio_transcriptions'
+              )
+              .map(model => ({
+                profileId: profile.profileId,
+                modelId: model.modelId,
+              }))
+          )
+        );
+      })
+      .catch(() => setTargets([]));
+  }, [workspaceServerService, workspaceService]);
 
-    setPreflightChecking(true);
-    const result = await block.transcribe().finally(() => {
-      setPreflightChecking(false);
-    });
-    if (result?.status === 'blocked') {
-      confirmModal.openConfirmModal({
-        title: t['com.affine.audio.transcribe.non-owner.confirm.title'](),
-        description: (
-          <Trans i18nKey="com.affine.audio.transcribe.non-owner.confirm.message">
-            Please contact <PublicUserLabel id={result.userId} /> to upgrade AI
-            rights or resend the attachment.
-          </Trans>
-        ),
-        onCancel: false,
-        confirmText: t['Confirm'](),
-        confirmButtonOptions: {
-          variant: 'primary',
-        },
+  const handleNotesClick = useAsyncCallback(
+    async (target?: TranscriptionModelTarget) => {
+      if (!enableAi || transcribing) {
+        return;
+      }
+
+      if (transcribed) {
+        block.expanded$.setValue(!expanded);
+        track.doc.editor.audioBlock.openTranscribeNotes({
+          type: 'Meeting record',
+          method: 'success',
+          option: expanded ? 'off' : 'on',
+        });
+        return;
+      }
+
+      if (!block.transcriptionJob.currentUserId) {
+        confirmModal.openConfirmModal({
+          title: t['com.affine.ai.login-required.dialog-title'](),
+          description: t['com.affine.ai.login-required.dialog-content'](),
+          confirmText: t['com.affine.ai.login-required.dialog-confirm'](),
+          confirmButtonOptions: {
+            variant: 'primary',
+          },
+          cancelText: t['com.affine.ai.login-required.dialog-cancel'](),
+          onConfirm: () => {
+            globalDialogService.open('sign-in', {});
+          },
+        });
+        track.doc.editor.audioBlock.openTranscribeNotes({
+          type: 'Meeting record',
+          method: 'not signed in',
+        });
+        return;
+      }
+
+      setPreflightChecking(true);
+      const result = await block.transcribe(target).finally(() => {
+        setPreflightChecking(false);
       });
-      track.doc.editor.audioBlock.openTranscribeNotes({
-        type: 'Meeting record',
-        method: 'not owner',
-      });
-    } else {
-      track.doc.editor.audioBlock.transcribeRecording({
-        type: 'Meeting record',
-        method: 'success',
-        option: 'handle transcribing',
-      });
-    }
-  }, [
-    enableAi,
-    transcribing,
-    transcribed,
-    block,
-    expanded,
-    confirmModal,
-    t,
-    globalDialogService,
-  ]);
+      if (result?.status === 'blocked') {
+        confirmModal.openConfirmModal({
+          title: t['com.affine.audio.transcribe.non-owner.confirm.title'](),
+          description: (
+            <Trans i18nKey="com.affine.audio.transcribe.non-owner.confirm.message">
+              Please contact <PublicUserLabel id={result.userId} /> to upgrade
+              AI rights or resend the attachment.
+            </Trans>
+          ),
+          onCancel: false,
+          confirmText: t['Confirm'](),
+          confirmButtonOptions: {
+            variant: 'primary',
+          },
+        });
+        track.doc.editor.audioBlock.openTranscribeNotes({
+          type: 'Meeting record',
+          method: 'not owner',
+        });
+      } else {
+        track.doc.editor.audioBlock.transcribeRecording({
+          type: 'Meeting record',
+          method: 'success',
+          option: 'handle transcribing',
+        });
+      }
+    },
+    [
+      enableAi,
+      transcribing,
+      transcribed,
+      block,
+      expanded,
+      confirmModal,
+      t,
+      globalDialogService,
+    ]
+  );
 
   const notesEntry = useMemo(() => {
     if (!enableAi) {
@@ -170,7 +221,7 @@ const AttachmentAudioPlayer = ({ block }: { block: AudioAttachmentBlock }) => {
         size="large"
         prefixClassName={styles.notesButtonIcon}
         className={styles.notesButton}
-        onClick={handleNotesClick}
+        onClick={() => handleNotesClick()}
       >
         {transcribing
           ? t['com.affine.audio.transcribing']()
@@ -184,8 +235,31 @@ const AttachmentAudioPlayer = ({ block }: { block: AudioAttachmentBlock }) => {
         </Tooltip>
       );
     }
+    if (!transcribed && targets.length > 0) {
+      return (
+        <Menu
+          items={
+            <>
+              <MenuItem key="default" onClick={() => handleNotesClick()}>
+                {t['com.affine.audio.transcribe.model.default']()}
+              </MenuItem>
+              {targets.map(target => (
+                <MenuItem
+                  key={`${target.profileId}:${target.modelId}`}
+                  onClick={() => handleNotesClick(target)}
+                >
+                  {target.modelId}
+                </MenuItem>
+              ))}
+            </>
+          }
+        >
+          {inner}
+        </Menu>
+      );
+    }
     return inner;
-  }, [enableAi, transcribing, handleNotesClick, t]);
+  }, [enableAi, transcribing, transcribed, targets, handleNotesClick, t]);
 
   const descriptionEntry = useMemo(() => {
     if (loadingError) {

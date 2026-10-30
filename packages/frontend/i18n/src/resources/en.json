@@ -2393,6 +2393,7 @@
   "com.affine.audio.transcribing": "Transcribing",
   "com.affine.audio.transcription-failed": "Transcription failed",
   "com.affine.audio.transcribe.non-owner.confirm.title": "Unable to retrieve AI results for others",
+  "com.affine.audio.transcribe.model.default": "Default",
   "com.affine.audio.transcribe.non-owner.confirm.message": "Please contact <1>{{user}}</1> to upgrade AI rights or resend the attachment.",
   "com.affine.recording.new": "Audio activity",
   "com.affine.recording.importing.prompt": "Importing...",

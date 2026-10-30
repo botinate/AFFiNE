@@ -224,6 +224,12 @@ class SubmitAudioTranscriptionInput implements TranscriptionSubmitInput {
 
   @Field(() => [AudioSliceManifestItemInput], { nullable: true })
   sliceManifest?: AudioSliceManifestItemInput[];
+
+  @Field(() => String, { nullable: true })
+  profileId?: string | null;
+
+  @Field(() => String, { nullable: true })
+  modelId?: string | null;
 }
 
 @ObjectType()

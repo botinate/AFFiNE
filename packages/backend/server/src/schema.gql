@@ -2318,6 +2318,8 @@ type StreamObject {
 }
 
 input SubmitAudioTranscriptionInput {
+  modelId: String
+  profileId: String
   quality: TranscriptionQualityInput
   sliceManifest: [AudioSliceManifestItemInput!]
   sourceAudio: TranscriptionSourceAudioInput
