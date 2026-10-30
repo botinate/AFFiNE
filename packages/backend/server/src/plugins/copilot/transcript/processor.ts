@@ -51,10 +51,34 @@ export class CopilotTranscriptionProcessor {
     private readonly retry: CopilotTranscriptionRetryService
   ) {}
 
-  private async buildTranscriptSliceMessages(info: AudioBlobInfo) {
+  private async buildTranscriptSliceMessages(
+    input: ActionRuntimeBridgeInput,
+    info: AudioBlobInfo
+  ) {
     const prompt = await this.prompts.get(TRANSCRIPT_PROMPT_REF);
     if (!prompt) {
       throw new Error('Transcript prompt not found');
+    }
+
+    // Attach the slice bytes directly. Fetching info.url at admission goes
+    // through the SSRF guard, which rejects private object-storage endpoints
+    // (e.g. a LAN S3 gateway); the storage runtime can always read our own
+    // bucket, so inline the slice as a data URL instead.
+    let attachment = info.url;
+    if (info.key) {
+      const object = await this.storage.getSessionAttachment(
+        input.userId,
+        input.workspaceId,
+        info.key
+      );
+      if (object.body) {
+        const data = await readBufferWithLimit(
+          object.body,
+          MAX_TRANSCRIPTION_SIZE
+        );
+        const mimeType = info.mimeType.split(';', 1)[0].trim();
+        attachment = `data:${mimeType};base64,${data.toString('base64')}`;
+      }
     }
 
     return [
@@ -63,7 +87,7 @@ export class CopilotTranscriptionProcessor {
         role: 'user' as const,
         content:
           'Transcribe this audio slice. Return start and end timestamps as elapsed seconds relative to this slice; never encode MM:SS as a number.',
-        attachments: [{ attachment: info.url, mimeType: info.mimeType }],
+        attachments: [{ attachment, mimeType: info.mimeType }],
         params: { mimetype: info.mimeType },
       },
     ];
@@ -119,7 +143,7 @@ export class CopilotTranscriptionProcessor {
     durationSec?: number,
     stage = `slice ${info.index ?? fallbackIndex}`
   ): Promise<RawTranscriptSegment[]> {
-    const messages = await this.buildTranscriptSliceMessages(info);
+    const messages = await this.buildTranscriptSliceMessages(input, info);
     const output = await this.retry.generateStructuredValue(
       input,
       messages,
