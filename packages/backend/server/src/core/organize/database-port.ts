@@ -58,7 +58,7 @@ export class WorkspaceDatabasePort {
     databaseBlockId: string,
     rows: Record<string, unknown>[],
     actorId: string
-  ): Promise<{ added: number; skipped: string[] }> {
+  ): Promise<{ added: number; skipped: string[]; created: string[] }> {
     const existing = await this.storage.getDoc(workspaceId, docId);
     if (!existing?.bin?.length) {
       throw new Error(`Doc ${docId} not found in workspace ${workspaceId}`);
@@ -87,6 +87,7 @@ export class WorkspaceDatabasePort {
     const titleColumn = columns.find(c => c.id === 'title');
 
     const skipped: string[] = [];
+    const created: string[] = [];
     const children = dbBlock.get('sys:children') as YArray<string>;
 
     let added = 0;
@@ -114,10 +115,15 @@ export class WorkspaceDatabasePort {
         cells.set(rowId, rowCells);
 
         for (const [key, raw] of Object.entries(row)) {
-          const col = byName.get(String(key).trim().toLowerCase());
+          const name = String(key).trim();
+          if (!name) continue;
+          let col = byName.get(name.toLowerCase());
           if (!col) {
-            skipped.push(key);
-            continue;
+            // The caller named this column deliberately and a fresh database
+            // block has none defined, so create it rather than drop the value.
+            col = ensureColumn(dbBlock, name, inferType([raw]));
+            byName.set(name.toLowerCase(), col);
+            created.push(name);
           }
           if (col.id === 'title' || (titleColumn && col === titleColumn)) {
             text.insert(0, String(raw ?? ''));
@@ -148,7 +154,7 @@ export class WorkspaceDatabasePort {
       `added ${added} rows to ${docId}/${databaseBlockId}` +
         (skipped.length ? ` (skipped: ${skipped.join(', ')})` : '')
     );
-    return { added, skipped };
+    return { added, skipped, created };
   }
 }
 
@@ -161,7 +167,59 @@ type ColumnDataType = {
 
 function readColumns(dbBlock: YMap<unknown>): ColumnDataType[] {
   const raw = dbBlock.get('prop:columns');
-  return Array.isArray(raw) ? (raw as ColumnDataType[]) : [];
+  if (!raw) return [];
+  // prop:columns is a Y.Array of column records; toArray() on a Y.Array, or a
+  // plain array depending on how the block was materialised.
+  const arr = typeof (raw as { toArray?: () => unknown[] }).toArray === 'function'
+    ? (raw as { toArray: () => unknown[] }).toArray()
+    : Array.isArray(raw)
+      ? raw
+      : [...(raw as Iterable<unknown>)];
+  return arr as ColumnDataType[];
+}
+
+/**
+ * Add a missing column to `prop:columns` and to the first view's column list.
+ * A fresh `/database` block ships with `prop:columns: []` and a view that only
+ * knows `title`, so a migration that passes column *names* would otherwise
+ * silently drop every value. Creating the column is the forgiving default —
+ * the caller named it on purpose.
+ */
+function ensureColumn(
+  dbBlock: YMap<unknown>,
+  name: string,
+  type: string
+): ColumnDataType {
+  const columns = dbBlock.get('prop:columns') as
+    | { toArray?: () => unknown[]; push?: (v: unknown[]) => void }
+    | undefined;
+  const col: ColumnDataType = {
+    id: newId(),
+    type,
+    name,
+    data: type === 'select' || type === 'multi-select' ? { options: [] } : {},
+  };
+  if (columns && typeof columns.push === 'function') {
+    columns.push([col]);
+  }
+  // Keep the first view's column order in step so the UI shows it.
+  const views = dbBlock.get('prop:views') as
+    | { toArray?: () => Record<string, unknown>[] }
+    | undefined;
+  const first = views?.toArray?.()?.[0];
+  const viewCols = first?.columns;
+  if (Array.isArray(viewCols) && !viewCols.some((c: any) => c?.id === col.id)) {
+    viewCols.push({ id: col.id, width: 200 });
+  }
+  return col;
+}
+
+/** Guess a column type from the first non-empty value it holds. */
+function inferType(values: unknown[]): string {
+  const nonNull = values.find(v => v !== null && v !== undefined && v !== '');
+  if (nonNull === undefined) return 'text';
+  if (typeof nonNull === 'number') return 'number';
+  return 'text';
 }
 
 /**

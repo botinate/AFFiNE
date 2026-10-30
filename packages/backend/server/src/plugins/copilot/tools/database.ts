@@ -42,7 +42,7 @@ export const buildAddDatabaseRowsHandler = (
       .assert('Doc.Update');
 
     try {
-      const { added, skipped } = await db.addRows(
+      const { added, skipped, created } = await db.addRows(
         options.workspace,
         docId,
         databaseBlockId,
@@ -52,6 +52,7 @@ export const buildAddDatabaseRowsHandler = (
       return {
         success: true,
         added,
+        createdColumns: [...new Set(created)],
         skippedColumns: skipped,
         message:
           `Added ${added} row(s) to database ${databaseBlockId}.` +
@@ -79,7 +80,7 @@ export const createAddDatabaseRowsTool = (
 ) => {
   return defineTool({
     description:
-      'Append rows to an EXISTING database block in a document. Keys of each row are column names (matched case-insensitively); values are the cell contents — text for text columns, numbers for number columns, and a display label for select/multi-select columns (the option is created if it does not exist yet). The row title goes in the key "title". The database must already exist; use doc_read to find its block id first.',
+      'Append rows to an EXISTING database block in a document. Keys of each row are column names (matched case-insensitively); values are the cell contents — text for text columns, numbers for number columns, and a display label for select/multi-select columns (the option is created if it does not exist yet). The row title goes in the key "title". The database block must already exist (use doc_read to find its block id) — but its columns do not have to: any column name that is not already on the database is created as a new column automatically, so you can migrate a plain table into a fresh /database block without pre-creating columns.',
     inputSchema: z.object({
       doc_id: z.string().min(1).describe('The document holding the database'),
       database_block_id: z
